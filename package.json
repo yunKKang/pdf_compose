@@ -3,12 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.24.0",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "samples": "node ./scripts/generate_samples.mjs",
-    "regression": "node ./scripts/export_regression.mjs"
+    "test": "node ./scripts/export_regression.mjs",
+    "regression": "node ./scripts/export_regression.mjs --write-report"
   },
   "dependencies": {
     "fabric": "^7.1.0",

@@ -2,6 +2,21 @@
 
 论文图表拼版 Web 工具（Vue 3 + Fabric.js + PDF.js + pdf-lib）。
 
+## 核心痛点
+
+论文写作和汇报中，经常需要把多篇 PDF 里的图、表、补充材料页面重新裁剪、对齐、组合成一页或多页拼版。传统做法通常依赖截图、PPT、Illustrator 或手工导出，容易损失矢量质量，也难以稳定复现尺寸、页码和裁剪边界。PDF Compose 的目标是把“从 PDF 页面选择到高质量 PDF 导出”的流程放在一个浏览器工具里完成。
+
+## 核心逻辑流
+
+这是一个单前端 Web 工具，不包含多 Agent 协作，也不依赖长链推理。核心流程是：
+
+1. 使用 PDF.js 在浏览器内读取本地 PDF，生成页面缩略图和画布预览。
+2. 用户选择或拖拽 PDF 页面/SVG 资产到 Fabric.js 画布。
+3. 画布记录对象的位置、尺寸、旋转、裁剪、图层和导出页归属。
+4. 导出前检查对象元数据、源 PDF 字节和 SVG 数据是否完整。
+5. 使用 pdf-lib 重新嵌入源 PDF 页面，PDF 对象优先保留矢量；SVG 先尝试矢量路径绘制，复杂效果再降级为高分辨率位图。
+6. 输出新的拼版 PDF，并给出导出对象统计与降级提示。
+
 ## 功能概览
 
 - 多 PDF 连续导入，统一选页后拼版
@@ -13,6 +28,7 @@
 ## 本地运行
 
 ```bash
+corepack enable
 pnpm install
 pnpm dev
 ```
@@ -21,8 +37,10 @@ pnpm dev
 
 ```bash
 pnpm build
-pnpm regression
+pnpm test
 ```
+
+`pnpm regression` 会额外更新 `samples/export_regression_report.md`，用于需要留存回归报告的场景；普通 CI 和本地检查使用 `pnpm test`，不会改动工作树。
 
 ## 如何用本地 PDF 测试
 
@@ -81,3 +99,18 @@ pnpm regression
 - 将真实样本放到 `samples/real/`。
 - 按 `samples/real/precision_review_report_template.md` 逐项记录位置、尺寸、清晰度与导出结果。
 - 建议每次改动导出链路后复跑一次并留存报告。
+
+## 质量门禁
+
+推送或开 PR 前运行：
+
+```bash
+pnpm build
+pnpm test
+```
+
+GitHub Actions 会在 push 和 pull request 上执行相同检查。
+
+## License
+
+MIT License. See `LICENSE`.

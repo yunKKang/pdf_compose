@@ -1,39 +1,66 @@
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import ts from 'typescript'
 
-const EXPORT_PAGE = {
-  widthPt: 841.89,
-  heightPt: 595.28,
-}
+const loadCommonJsModule = (source, filename, requireMap = {}) => {
+  const output = ts.transpileModule(source, {
+    fileName: filename,
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  })
 
-const mapCanvasRectToPdf = ({ leftPx, topPx, widthPx, heightPx, canvasWidthPx, canvasHeightPx }) => {
-  const scaleX = EXPORT_PAGE.widthPt / canvasWidthPx
-  const scaleY = EXPORT_PAGE.heightPt / canvasHeightPx
+  const exports = {}
+  const require = (specifier) => {
+    if (specifier in requireMap) {
+      return requireMap[specifier]
+    }
 
-  return {
-    xPt: leftPx * scaleX,
-    yPt: EXPORT_PAGE.heightPt - (topPx + heightPx) * scaleY,
-    widthPt: widthPx * scaleX,
-    heightPt: heightPx * scaleY,
+    throw new Error(`Unexpected import in regression script: ${specifier}`)
   }
+
+  new Function('require', 'exports', output.outputText)(require, exports)
+  return exports
 }
+
+const constantsPath = join(process.cwd(), 'src', 'utils', 'constants.ts')
+const transformPath = join(process.cwd(), 'src', 'utils', 'coordinate_transform.ts')
+const constantsModule = loadCommonJsModule(
+  await readFile(constantsPath, 'utf8'),
+  constantsPath,
+)
+const transformModule = loadCommonJsModule(
+  await readFile(transformPath, 'utf8'),
+  transformPath,
+  { '@/utils/constants': constantsModule },
+)
+
+const { EXPORT_PAGE } = constantsModule
+const { mapCanvasRectToPdf } = transformModule
 
 const closeEnough = (a, b, eps = 0.01) => Math.abs(a - b) <= eps
+
+const withExportPage = (input) => ({
+  ...input,
+  pageWidthPt: EXPORT_PAGE.widthPt,
+  pageHeightPt: EXPORT_PAGE.heightPt,
+})
 
 const tests = [
   {
     name: 'Top-left anchor',
-    input: { leftPx: 0, topPx: 0, widthPx: 96, heightPx: 68, canvasWidthPx: 960, canvasHeightPx: 680 },
+    input: withExportPage({ leftPx: 0, topPx: 0, widthPx: 96, heightPx: 68, canvasWidthPx: 960, canvasHeightPx: 680 }),
     expected: { xPt: 0, yPt: 535.752, widthPt: 84.189, heightPt: 59.528 },
   },
   {
     name: 'Bottom-right anchor',
-    input: { leftPx: 864, topPx: 612, widthPx: 96, heightPx: 68, canvasWidthPx: 960, canvasHeightPx: 680 },
+    input: withExportPage({ leftPx: 864, topPx: 612, widthPx: 96, heightPx: 68, canvasWidthPx: 960, canvasHeightPx: 680 }),
     expected: { xPt: 757.701, yPt: 0, widthPt: 84.189, heightPt: 59.528 },
   },
   {
     name: 'Center block',
-    input: { leftPx: 240, topPx: 170, widthPx: 480, heightPx: 340, canvasWidthPx: 960, canvasHeightPx: 680 },
+    input: withExportPage({ leftPx: 240, topPx: 170, widthPx: 480, heightPx: 340, canvasWidthPx: 960, canvasHeightPx: 680 }),
     expected: { xPt: 210.4725, yPt: 148.82, widthPt: 420.945, heightPt: 297.64 },
   },
 ]
@@ -54,6 +81,7 @@ const results = tests.map((test) => {
 })
 
 const passed = results.every((item) => item.pass)
+const shouldWriteReport = process.argv.includes('--write-report')
 const lines = [
   '# Export Regression Report',
   '',
@@ -71,7 +99,10 @@ for (const result of results) {
 }
 
 const output = lines.join('\n')
-await writeFile(join(process.cwd(), 'samples', 'export_regression_report.md'), output)
+if (shouldWriteReport) {
+  await writeFile(join(process.cwd(), 'samples', 'export_regression_report.md'), output)
+}
 
-process.stdout.write(`${passed ? 'PASS' : 'FAIL'} - wrote samples/export_regression_report.md\n`)
+const reportText = shouldWriteReport ? ' - wrote samples/export_regression_report.md' : ''
+process.stdout.write(`${passed ? 'PASS' : 'FAIL'}${reportText}\n`)
 process.exitCode = passed ? 0 : 1
